@@ -1,6 +1,10 @@
+import asyncio
 import discord
 import random
+from discord import client
 from discord.ext import commands
+from discord.ext.commands.cog import Cog
+from discord.ext.commands.core import command
 from data_structures.PlayerNode import PlayerNode
 from data_structures.Party import Party
 
@@ -14,6 +18,7 @@ class PartyCMNDs(commands.Cog):
     def __init__(self, client):
         self.client = client
     
+
     #Create party
     @commands.command()
     async def mkpt(self, context, *, ptName):
@@ -127,6 +132,7 @@ class PartyCMNDs(commands.Cog):
         else:
             await context.send("That user is not in your party!")
     
+    #set party objective
     @commands.command()
     async def setObjective(self, context, *, objective):
         authorid = context.author.id
@@ -136,22 +142,44 @@ class PartyCMNDs(commands.Cog):
         else:
             await context.send("You need to be a party leader to set the party's objective.")
     
+    #sortie
     @commands.command()
     async def sortie(self, context):
+        timeout_delay = 30
         authorid = context.author.id
         if authorid in party_dict:
-            currentpt = party_dict[authorid]
-            message_string = f'{context.author.display_name} requesting sortie.\nMISSION: {currentpt.objective}\n'
-            for key in currentpt.manifest:
-                message_string = message_string + f"{currentpt.manifest[key].mention}"
-            message_string = message_string + " requesting ready up."
-            await context.send(message_string)
+            #Ask for time in seconds for message to be sent
+            await context.send(f"Please state the number of seconds until sortie launch. Type '0' to notify all members immediately.  You have {timeout_delay} seconds")
+
+            #Check if message content can be converted into an integer
+            def check(m):
+                return m.content.isdigit() and m.author == context.author
+            
+            #await user message
+            msg = await self.client.wait_for('message', check=check, timeout=timeout_delay)
+
+            if msg is None:
+                await context.send("Failed to add a delay in time.")
+            else:
+                delay_sec = int(msg.content)
+                currentpt = party_dict[authorid]
+                message_string = f'{context.author.display_name} requesting sortie.\nMISSION: {currentpt.objective}\n'
+                for key in currentpt.manifest:
+                    message_string = message_string + f"{currentpt.manifest[key].mention}"
+                message_string = message_string + " requesting ready up."
+                await asyncio.sleep(delay_sec)
+                await context.send(message_string)
         else:
             await context.send("No party to sortie with.")
 
+    ###########################
+    #     Error handlers      #
+    ###########################
 
-#Disbands party if leaver is last person (i.e. the leader)
-#Left outside class because it doesn't affect it, only some variables in its container scope.
+    @sortie.error
+    async def sortie_error(self, context: commands.Context, error: commands.CommandError):
+        if isinstance(error.original, asyncio.TimeoutError):
+            await context.send("Time limit reached.")
 
 def setup(client):
     client.add_cog(PartyCMNDs(client))
